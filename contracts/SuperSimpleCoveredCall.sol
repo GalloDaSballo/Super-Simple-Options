@@ -9,6 +9,7 @@ import {IPriceFeed} from "../interfaces/chainlink/IPriceFeed.sol";
 
 /// @dev Super Simple Covered Call, forces both party to put 100% of collateral upfront
 /// @notice Allows taker to rescind early to unlock collateral
+/// @notice Also can be reused, unless I messed something up
 contract SuperSimpleCoveredCall {
   using SafeERC20 for IERC20;
 
@@ -48,6 +49,7 @@ contract SuperSimpleCoveredCall {
   }
 
 
+  /// @dev Setup the parameters, fund with the token
   function setup(uint256 amount, uint256 pricePerToken, uint256 durationDays, uint256 outTokenPremium) public {
     require(expirationDate == 0); // Flag value for non-started contract
 
@@ -59,6 +61,7 @@ contract SuperSimpleCoveredCall {
     BADGER.safeTransferFrom(msg.sender, address(this), amount);
   }
 
+  /// @dev Buy the Call, send the premium to maker and lock in your collateral
   function buy() external {
     require(taker == address(0));
     require(!active);
@@ -66,15 +69,16 @@ contract SuperSimpleCoveredCall {
     taker = msg.sender;
     active = true;
 
-    uint256 toSend = exercisePrice * tokensToSell + premium;
-
-    USDC.safeTransferFrom(msg.sender, address(this), toSend);
-    USDC.safeTransfer(maker, premium);
+    USDC.safeTransferFrom(msg.sender, maker, premium);
   }
 
   /// @dev Exercise the option, receive the underlying tokens
   function exercise() external {
-    // Check
+    require(block.timestamp <= expirationDate); // Must exercise before or at expiration
+
+    uint256 cachedExercisePrice = exercisePrice;
+
+    // Check Price
     (
       uint80 roundId,
       int256 answer,
@@ -82,19 +86,23 @@ contract SuperSimpleCoveredCall {
       uint256 updatedAt,
       uint80 answeredInRound
     ) = BADGER_USDC_FEED.latestRoundData();
-    require(block.timestamp <= expirationDate); // Must exercise before or at expiration
     require(block.timestamp - updatedAt < SECONDS_PER_HOUR); // Check for freshness of feed
-    require(answer >= int256(exercisePrice)); // Check if condition is met
+    require(answer >= int256(cachedExercisePrice)); // Check if condition is met
+
+    uint256 settlementPrice = cachedExercisePrice * tokensToSell;
 
     //  Let's settle
+    address cachedTaker = taker;
+    address cachedMaker = maker;
 
-    // Pay Maker
-    USDC.safeTransfer(maker, USDC.balanceOf(address(this)));
+    // Reset everything for next time
+    _reset();
+
+    // Pay Maker via the USDC owed
+    USDC.safeTransferFrom(cachedMaker, maker, settlementPrice);
 
     // Send Taker the tokens
-    BADGER.safeTransfer(taker, BADGER.balanceOf(address(this)));
-
-    // GG
+    BADGER.safeTransfer(cachedTaker, BADGER.balanceOf(address(this)));
   }
 
   function cancel() external {
@@ -102,10 +110,7 @@ contract SuperSimpleCoveredCall {
     address cachedTaker = taker;
     require(block.timestamp <= expirationDate || msg.sender == cachedTaker); // Taker can cancel early, else cancel exclusively after expiry
 
-    expirationDate = 0;
-    active = false;
-    exercisePrice = 0;
-    tokensToSell = 0;
+    _reset();
 
     USDC.safeTransfer(cachedTaker, USDC.balanceOf(address(this))); // Send back the deposit
 
@@ -119,10 +124,16 @@ contract SuperSimpleCoveredCall {
 
     uint256 toWithdraw = tokensToSell;
 
-    expirationDate = 0;
-    exercisePrice = 0;
-    tokensToSell = 0;
+    _reset();
 
     BADGER.safeTransfer(maker, toWithdraw);
+  }
+
+  function _reset() internal {
+    premium = 0;
+    expirationDate = 0;
+    active = false; // Costs an extra 100 gas but w/e
+    exercisePrice = 0;
+    tokensToSell = 0;
   }
 }
