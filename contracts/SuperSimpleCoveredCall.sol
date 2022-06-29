@@ -33,9 +33,6 @@ contract SuperSimpleCoveredCall {
 
   uint256 public premium;
 
-  // Active only once counterparty has funded
-  bool active = false;
-
   address public taker;
 
   address public immutable maker;
@@ -64,7 +61,6 @@ contract SuperSimpleCoveredCall {
   /// @dev Buy the Call, send the premium to maker and lock in your collateral
   function buy() external {
     require(taker == address(0));
-    require(!active);
 
     taker = msg.sender;
     active = true;
@@ -74,7 +70,12 @@ contract SuperSimpleCoveredCall {
 
   /// @dev Exercise the option, receive the underlying tokens
   function exercise() external {
+    // Cache addresses for later
+    address cachedTaker = taker;
+    address cachedMaker = maker;
+    
     require(block.timestamp <= expirationDate); // Must exercise before or at expiration
+    require(msg.sender == cachedTaker); // Taker has the privilege of exercising, no-one else
 
     uint256 cachedExercisePrice = exercisePrice;
 
@@ -92,16 +93,14 @@ contract SuperSimpleCoveredCall {
     uint256 settlementPrice = cachedExercisePrice * tokensToSell;
 
     //  Let's settle
-    address cachedTaker = taker;
-    address cachedMaker = maker;
 
     // Reset everything for next time
     _reset();
 
-    // Pay Maker via the USDC owed
-    USDC.safeTransferFrom(cachedTaker, maker, settlementPrice);
+    // Pay Maker via the agree strike price
+    USDC.safeTransferFrom(cachedTaker, cachedMaker, settlementPrice);
 
-    // Send Taker the tokens
+    // Send Taker the tokens they bought
     BADGER.safeTransfer(cachedTaker, BADGER.balanceOf(address(this)));
   }
 
@@ -109,27 +108,28 @@ contract SuperSimpleCoveredCall {
   /// @notice Either if contract expired or if the taker doesn't want it anymore
   function cancel() external {
     // Taker can cancel, by loosing the premium, as premium is sent to maker immediately
-    address cachedTaker = taker;
-    require(block.timestamp > expirationDate || msg.sender == cachedTaker); // Taker can cancel early, else cancel exclusively after expiry
+    require(block.timestamp > expirationDate || msg.sender == taker); // Taker can cancel early, else cancel exclusively after expiry
 
     _reset();
 
-    BADGER.safeTransfer(maker, BADGER.balanceOf(address(this))); // Send back the underlying
+    BADGER.safeTransfer(maker, tokensToSell); // Send back the underlying
   }
 
   /// @dev Break the contract early, if you change your mind
   /// @notice Resets, you can always setup a new one next time
   function rescind() external {
-    require(msg.sender == maker);  // Only maker can undo the setup else griefable
-    require(!active); // can prob use taker as flag for active tbh
+    address cachedMaker = maker; 
+    require(msg.sender == cachedMaker);  // Only maker can undo the setup else griefable
+    require(taker == address(0)); // Taker not set == not active
 
     _reset();
 
-    BADGER.safeTransfer(maker, tokensToSell);
+    BADGER.safeTransfer(cachedMaker, tokensToSell);
   }
 
   /// @dev Convenience function to reset storage to neutral
   function _reset() internal {
+    // No difference with delete
     premium = 0;
     expirationDate = 0;
     active = false; // Costs an extra 100 gas but w/e
