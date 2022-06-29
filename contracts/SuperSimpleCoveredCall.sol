@@ -7,7 +7,7 @@ import {SafeERC20} from "@oz/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@oz/security/ReentrancyGuard.sol";
 import {IPriceFeed} from "../interfaces/chainlink/IPriceFeed.sol";
 
-contract SuperSimpleCallOption {
+contract SuperSimpleCoveredCall {
   using SafeERC20 for IERC20;
 
   // Token in
