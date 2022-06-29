@@ -7,6 +7,8 @@ import {SafeERC20} from "@oz/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@oz/security/ReentrancyGuard.sol";
 import {IPriceFeed} from "../interfaces/chainlink/IPriceFeed.sol";
 
+/// @dev Super Simple Covered Call, forces both party to put 100% of collateral upfront
+/// @notice Allows taker to rescind early to unlock collateral
 contract SuperSimpleCoveredCall {
   using SafeERC20 for IERC20;
 
@@ -28,6 +30,8 @@ contract SuperSimpleCoveredCall {
   // Price at which you can exercuse the option
   uint256 public exercisePrice;
 
+  uint256 public premium;
+
   // Active only once counterparty has funded
   bool active = false;
 
@@ -38,18 +42,19 @@ contract SuperSimpleCoveredCall {
   uint256 private constant SECONDS_PER_DAY = 86400;
   uint256 private constant SECONDS_PER_HOUR = 3600;
 
-  constructor(uint256 amount, uint256 durationDays, uint256 price) {
+  constructor(uint256 amount, uint256 price, uint256 durationDays, uint256 outTokenPremium) {
     maker = msg.sender;
-    setup(amount, durationDays, price);
+    setup(amount, durationDays, price, outTokenPremium);
   }
 
 
-  function setup(uint256 amount, uint256 pricePerToken, uint256 durationDays) public {
+  function setup(uint256 amount, uint256 pricePerToken, uint256 durationDays, uint256 outTokenPremium) public {
     require(expirationDate == 0); // Flag value for non-started contract
 
     expirationDate = block.timestamp + durationDays * SECONDS_PER_DAY;
     exercisePrice = pricePerToken;
     tokensToSell = amount;
+    premium = outTokenPremium;
 
     BADGER.safeTransferFrom(msg.sender, address(this), amount);
   }
@@ -61,9 +66,10 @@ contract SuperSimpleCoveredCall {
     taker = msg.sender;
     active = true;
 
-    uint256 toSend = exercisePrice * tokensToSell;
+    uint256 toSend = exercisePrice * tokensToSell + premium;
 
     USDC.safeTransferFrom(msg.sender, address(this), toSend);
+    USDC.safeTransfer(maker, premium);
   }
 
   /// @dev Exercise the option, receive the underlying tokens
