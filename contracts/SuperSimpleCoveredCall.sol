@@ -105,6 +105,8 @@ contract SuperSimpleCoveredCall {
     BADGER.safeTransfer(cachedTaker, BADGER.balanceOf(address(this)));
   }
 
+  /// @dev Cancel the option
+  /// @notice Either if contract expired or if the taker doesn't want it anymore
   function cancel() external {
     // Taker can cancel, by loosing the premium, as premium is sent to maker immediately
     address cachedTaker = taker;
@@ -112,23 +114,20 @@ contract SuperSimpleCoveredCall {
 
     _reset();
 
-    USDC.safeTransfer(cachedTaker, USDC.balanceOf(address(this))); // Send back the deposit
-
     BADGER.safeTransfer(maker, BADGER.balanceOf(address(this))); // Send back the underlying
   }
 
-  /// @dev Cancel the option
-  /// @notice Either if contract expired or if 
+  /// @dev Break the contract early, if you change your mind
+  /// @notice Resets, you can always setup a new one next time
   function rescind() external {
     require(!active);
 
-    uint256 toWithdraw = tokensToSell;
-
     _reset();
 
-    BADGER.safeTransfer(maker, toWithdraw);
+    BADGER.safeTransfer(maker, tokensToSell);
   }
 
+  /// @dev Convenience function to reset storage to neutral
   function _reset() internal {
     premium = 0;
     expirationDate = 0;
