@@ -120,6 +120,7 @@ contract SuperSimpleCoveredCall {
   /// @dev Break the contract early, if you change your mind
   /// @notice Resets, you can always setup a new one next time
   function rescind() external {
+    require(msg.sender == maker);  // Only maker can undo the setup else griefable
     require(!active); // can prob use taker as flag for active tbh
 
     _reset();
