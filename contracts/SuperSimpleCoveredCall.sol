@@ -99,7 +99,7 @@ contract SuperSimpleCoveredCall {
     _reset();
 
     // Pay Maker via the USDC owed
-    USDC.safeTransferFrom(cachedMaker, maker, settlementPrice);
+    USDC.safeTransferFrom(cachedTaker, maker, settlementPrice);
 
     // Send Taker the tokens
     BADGER.safeTransfer(cachedTaker, BADGER.balanceOf(address(this)));
