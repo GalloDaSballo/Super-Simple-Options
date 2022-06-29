@@ -134,5 +134,6 @@ contract SuperSimpleCoveredCall {
     active = false; // Costs an extra 100 gas but w/e
     exercisePrice = 0;
     tokensToSell = 0;
+    taker = address(0);
   }
 }
