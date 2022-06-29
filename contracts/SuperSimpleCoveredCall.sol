@@ -110,7 +110,7 @@ contract SuperSimpleCoveredCall {
   function cancel() external {
     // Taker can cancel, by loosing the premium, as premium is sent to maker immediately
     address cachedTaker = taker;
-    require(block.timestamp <= expirationDate || msg.sender == cachedTaker); // Taker can cancel early, else cancel exclusively after expiry
+    require(block.timestamp > expirationDate || msg.sender == cachedTaker); // Taker can cancel early, else cancel exclusively after expiry
 
     _reset();
 
